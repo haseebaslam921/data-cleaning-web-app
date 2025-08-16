@@ -346,6 +346,7 @@ body {
     color: #92400e;
 }
 
+
 .quality-card {
     background: linear-gradient(135deg, #ffffff, #f8fafc);
     border-radius: 1rem;
@@ -354,6 +355,15 @@ body {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     border: 1px solid rgba(226, 232, 240, 0.8);
     transition: all 0.3s ease;
+    max-width: 220px;
+    min-width: 180px;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    word-break: break-word;
 }
 
 .quality-card:hover {
@@ -361,18 +371,32 @@ body {
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
 }
 
+
 .quality-score {
-    font-size: 2.5rem;
+    font-size: 1.7rem;
     font-weight: 700;
     margin-bottom: 0.5rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: break-word;
+    display: block;
 }
+
 
 .quality-label {
     color: #64748b;
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    font-size: 0.875rem;
+    font-size: 0.82rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: break-word;
+    display: block;
 }
 
 /* FIXED: Data table container with proper horizontal scrolling */
@@ -1496,8 +1520,8 @@ content = html.Div([
                                  id="analyze-quality-btn", className="btn-primary-custom me-3 mb-3"),
                         dbc.Button([html.I(className="fas fa-brain me-2"), "Generate Recommendations"], 
                                  id="generate-recommendations-btn", className="btn-info-custom me-3 mb-3"),
-                        dbc.Button([html.I(className="fas fa-cog me-2"), "Auto-Detect Data Types"], 
-                                 id="detect-types-btn", className="btn-success-custom mb-3"),
+                         
+                                 
                     ], width=12),
                     dbc.Col([
                         html.Div(id="smart-analysis-results", className="mt-4")
@@ -1536,8 +1560,18 @@ content = html.Div([
                             multi=True,
                             className="mb-4 form-control-custom"
                         ),
-                        dbc.Button([html.I(className="fas fa-search me-2"), "Detect Outliers"], 
-                                 id="detect-outliers-btn", className="btn-primary-custom"),
+                        dbc.Row([
+                            dbc.Col([
+                                dbc.Button([
+                                    html.I(className="fas fa-search me-2"), "Detect Outliers"
+                                ], id="detect-outliers-btn", className="btn-primary-custom me-2", style={"width": "180px"}),
+                            ], width="auto"),
+                            dbc.Col([
+                                dbc.Button([
+                                    html.I(className="fas fa-eraser me-2"), "Remove Outliers"
+                                ], id="remove-outliers-btn", className="btn-danger-custom", style={"width": "180px"}),
+                            ], width="auto"),
+                        ], className="mb-3", style={"gap": "0.5rem"}),
                     ], width=4),
                     dbc.Col([
                         html.Div(id="outlier-results", className="mt-3")
@@ -1558,8 +1592,7 @@ content = html.Div([
                     dbc.Col([
                         html.H6([html.I(className="fas fa-cog me-2"), "Smart Imputation"], className="text-primary mb-3"),
                         html.Label("Select Column:", className="fw-bold mb-2"),
-                        dcc.Dropdown(id="imputation-column", placeholder="Choose column with missing values", 
-                                   className="mb-3 form-control-custom"),
+                        dcc.Dropdown(id="imputation-column", placeholder="Choose column(s) with missing values", multi=True, className="mb-3 form-control-custom"),
                         html.Label("Imputation Method:", className="fw-bold mb-2"),
                         dbc.RadioItems(
                             id="imputation-method",
@@ -1581,8 +1614,7 @@ content = html.Div([
                     dbc.Col([
                         html.H6([html.I(className="fas fa-edit me-2"), "Text Standardization"], className="text-primary mb-3"),
                         html.Label("Select Text Column:", className="fw-bold mb-2"),
-                        dcc.Dropdown(id="text-column", placeholder="Choose text column", 
-                                   className="mb-3 form-control-custom"),
+                        dcc.Dropdown(id="text-column", placeholder="Choose text column(s)", multi=True, className="mb-3 form-control-custom"),
                         dbc.Checklist(
                             id="text-cleaning-options",
                             options=[
@@ -1977,103 +2009,119 @@ def smart_analysis(quality_clicks, rec_clicks, types_clicks, data):
     return html.Div()
 
 # Outlier detection callback (enhanced)
+
+# Combined Outlier Detection and Removal Callback
 @app.callback(
     Output("outlier-results", "children"),
-    [Input("detect-outliers-btn", "n_clicks")],
+    [Input("detect-outliers-btn", "n_clicks"),
+     Input("remove-outliers-btn", "n_clicks")],
     [State("stored-data", "data"),
      State("outlier-method", "value"),
      State("outlier-columns", "value")]
 )
-def detect_outliers_callback(n_clicks, data, method, selected_columns):
-    if not n_clicks or not data:
-        return html.Div([
-            html.I(className="fas fa-search fa-3x text-muted mb-3"),
-            html.H6("Select method and click 'Detect Outliers' to analyze", className="text-muted")
-        ], className="text-center py-4")
-    
+def outlier_actions(detect_clicks, remove_clicks, data, method, selected_columns):
+    ctx = dash.callback_context
+    if not ctx.triggered or not data:
+        return dash.no_update
+
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
     df = pd.DataFrame(data)
     columns = selected_columns if selected_columns else df.select_dtypes(include=[np.number]).columns.tolist()
-    
-    if not columns:
-        return dbc.Alert([
-            html.I(className="fas fa-exclamation-triangle me-2"),
-            "No numeric columns available for outlier detection."
-        ], color="warning", className="alert-custom")
-    
-    try:
-        if method == "iqr":
-            outlier_info = detect_outliers_iqr(df, columns)
-        elif method == "zscore":
-            outlier_info = detect_outliers_zscore(df, columns)
-        elif method == "ml_ensemble":
-            outlier_info = ml_based_outlier_detection(df, columns)
-        elif method == "isolation_forest":
-            iso_forest = IsolationForest(contamination=0.1, random_state=42)
-            numeric_data = df[columns].dropna()
-            if len(numeric_data) < 10:
-                return dbc.Alert("Insufficient data for outlier detection.", color="warning", className="alert-custom")
-            predictions = iso_forest.fit_predict(numeric_data)
-            outlier_indices = numeric_data.index[predictions == -1].tolist()
-            outlier_info = {
-                'method': 'Isolation Forest',
-                'total_outliers': len(outlier_indices),
-                'outlier_indices': outlier_indices
-            }
-        elif method == "lof":
-            lof = LocalOutlierFactor(contamination=0.1)
-            numeric_data = df[columns].dropna()
-            if len(numeric_data) < 10:
-                return dbc.Alert("Insufficient data for outlier detection.", color="warning", className="alert-custom")
-            predictions = lof.fit_predict(numeric_data)
-            outlier_indices = numeric_data.index[predictions == -1].tolist()
-            outlier_info = {
-                'method': 'Local Outlier Factor',
-                'total_outliers': len(outlier_indices),
-                'outlier_indices': outlier_indices
-            }
-        
-        # Create results display
-        results = [
-            dbc.Alert([
+
+    if button_id == "detect-outliers-btn":
+        if not columns:
+            return dbc.Alert([
+                html.I(className="fas fa-exclamation-triangle me-2"),
+                "No numeric columns available for outlier detection."
+            ], color="warning", className="alert-custom")
+        try:
+            if method == "iqr":
+                outlier_info = detect_outliers_iqr(df, columns)
+            elif method == "zscore":
+                outlier_info = detect_outliers_zscore(df, columns)
+            elif method == "ml_ensemble":
+                outlier_info = ml_based_outlier_detection(df, columns)
+            elif method == "isolation_forest":
+                iso_forest = IsolationForest(contamination=0.1, random_state=42)
+                numeric_data = df[columns].dropna()
+                if len(numeric_data) < 10:
+                    return dbc.Alert("Insufficient data for outlier detection.", color="warning", className="alert-custom")
+                predictions = iso_forest.fit_predict(numeric_data)
+                outlier_indices = numeric_data.index[predictions == -1].tolist()
+                outlier_info = {
+                    'method': 'Isolation Forest',
+                    'total_outliers': len(outlier_indices),
+                    'outlier_indices': outlier_indices
+                }
+            elif method == "lof":
+                lof = LocalOutlierFactor(contamination=0.1)
+                numeric_data = df[columns].dropna()
+                if len(numeric_data) < 10:
+                    return dbc.Alert("Insufficient data for outlier detection.", color="warning", className="alert-custom")
+                predictions = lof.fit_predict(numeric_data)
+                outlier_indices = numeric_data.index[predictions == -1].tolist()
+                outlier_info = {
+                    'method': 'Local Outlier Factor',
+                    'total_outliers': len(outlier_indices),
+                    'outlier_indices': outlier_indices
+                }
+            return dbc.Alert([
                 html.H6([html.I(className="fas fa-search me-2"), f"{outlier_info.get('method', method.upper())} Results"]),
                 html.P(f"Total outliers detected: {outlier_info.get('total_outliers', 0)}")
             ], color="info", className="alert-custom")
-        ]
-        
-        # Add detailed results for each column
-        if 'outliers_by_column' in outlier_info:
-            for col, col_info in outlier_info['outliers_by_column'].items():
-                if col_info['count'] > 0:
-                    results.append(
-                        html.Div([
-                            html.Div([
-                                html.H6([html.I(className="fas fa-chart-bar me-2"), col], className="section-title")
-                            ], className="section-header"),
-                            html.Div([
-                                html.P(f"Outliers: {col_info['count']}"),
-                                html.P(f"Indices: {col_info['indices'][:10]}{'...' if len(col_info['indices']) > 10 else ''}"),
-                                dcc.Graph(figure=create_outlier_boxplot(df, col))
-                            ], className="section-body")
-                        ], className="section-card mb-3")
-                    )
-        
-        # Add action buttons
-        if outlier_info.get('total_outliers', 0) > 0:
-            results.append(
-                dbc.ButtonGroup([
-                    dbc.Button([html.I(className="fas fa-trash me-2"), "Remove Outliers"], 
-                             id="remove-outliers-btn", className="btn-danger-custom"),
-                    dbc.Button([html.I(className="fas fa-cut me-2"), "Cap Outliers"], 
-                             id="cap-outliers-btn", className="btn-warning-custom"),
-                    dbc.Button([html.I(className="fas fa-tag me-2"), "Mark as Anomalies"], 
-                             id="mark-outliers-btn", className="btn-info-custom")
-                ], className="mt-3")
-            )
-        
-        return html.Div(results)
-        
-    except Exception as e:
-        return dbc.Alert(f"Error in outlier detection: {str(e)}", color="danger", className="alert-custom")
+        except Exception as e:
+            return dbc.Alert(f"Error in outlier detection: {str(e)}", color="danger", className="alert-custom")
+    elif button_id == "remove-outliers-btn":
+        if not columns:
+            return dbc.Alert([
+                html.I(className="fas fa-exclamation-triangle me-2"),
+                "No numeric columns available for outlier removal."
+            ], color="warning", className="alert-custom")
+        try:
+            outlier_indices = set()
+            if method == "iqr":
+                outlier_info = detect_outliers_iqr(df, columns)
+                outlier_indices = set(outlier_info.get('outlier_indices', []))
+                method_name = "IQR"
+            elif method == "zscore":
+                outlier_info = detect_outliers_zscore(df, columns)
+                outlier_indices = set(outlier_info.get('outlier_indices', []))
+                method_name = "Z-Score"
+            elif method == "ml_ensemble":
+                outlier_info = ml_based_outlier_detection(df, columns)
+                outlier_indices = set(outlier_info.get('outlier_indices', []))
+                method_name = "ML Ensemble"
+            elif method == "isolation_forest":
+                iso_forest = IsolationForest(contamination=0.1, random_state=42)
+                numeric_data = df[columns].dropna()
+                if len(numeric_data) < 10:
+                    return dbc.Alert("Insufficient data for outlier removal.", color="warning", className="alert-custom")
+                predictions = iso_forest.fit_predict(numeric_data)
+                outlier_indices = set(numeric_data.index[predictions == -1].tolist())
+                method_name = "Isolation Forest"
+            elif method == "lof":
+                lof = LocalOutlierFactor(contamination=0.1)
+                numeric_data = df[columns].dropna()
+                if len(numeric_data) < 10:
+                    return dbc.Alert("Insufficient data for outlier removal.", color="warning", className="alert-custom")
+                predictions = lof.fit_predict(numeric_data)
+                outlier_indices = set(numeric_data.index[predictions == -1].tolist())
+                method_name = "Local Outlier Factor"
+            else:
+                return dbc.Alert("Unknown outlier removal method.", color="danger", className="alert-custom")
+
+            if not outlier_indices:
+                return dbc.Alert("No outliers found to remove.", color="info", className="alert-custom")
+
+            df_cleaned = df.drop(index=outlier_indices)
+            removed_count = len(outlier_indices)
+            return dbc.Alert([
+                html.H6([html.I(className="fas fa-eraser me-2"), f"Outliers removed using {method_name} method."]),
+                html.P(f"Rows removed: {removed_count}")
+            ], color="success", className="alert-custom")
+        except Exception as e:
+            return dbc.Alert(f"Error removing outliers: {str(e)}", color="danger", className="alert-custom")
+    return dash.no_update
 
 # ML Cleaning callbacks
 @app.callback(
@@ -2107,66 +2155,68 @@ def ml_cleaning_operations(impute_clicks, text_clicks, data, impute_col, impute_
     
     if button_id == "apply-imputation-btn" and impute_col:
         try:
-            original_missing = df[impute_col].isnull().sum()
-            df_imputed = smart_imputation(df, impute_col, impute_method)
-            new_missing = df_imputed[impute_col].isnull().sum()
-            
-            # Update stored data
+            # Support both single and multiple columns
+            if not isinstance(impute_col, list):
+                impute_col = [impute_col]
+            df_imputed = df.copy()
+            total_filled = 0
+            details = []
+            for col in impute_col:
+                original_missing = df_imputed[col].isnull().sum()
+                df_imputed = smart_imputation(df_imputed, col, impute_method)
+                new_missing = df_imputed[col].isnull().sum()
+                filled = original_missing - new_missing
+                total_filled += filled
+                details.append(f"{col}: {filled} filled")
+                cleaning_history.append({
+                    'operation': f'Imputation ({impute_method})',
+                    'column': col,
+                    'details': f'Filled {filled} missing values',
+                    'timestamp': datetime.datetime.now().strftime('%H:%M:%S')
+                })
             stored_data['current'] = df_imputed
-            
-            # Add to cleaning history
-            cleaning_history.append({
-                'operation': f'Imputation ({impute_method})',
-                'column': impute_col,
-                'details': f'Filled {original_missing - new_missing} missing values',
-                'timestamp': datetime.datetime.now().strftime('%H:%M:%S')
-            })
-            
             return dbc.Alert([
                 html.H6([html.I(className="fas fa-check-circle me-2"), "Imputation Completed"]),
-                html.P(f"Column: {impute_col}"),
+                html.P(f"Columns: {', '.join(impute_col)}"),
                 html.P(f"Method: {impute_method}"),
-                html.P(f"Missing values filled: {original_missing - new_missing}")
+                html.P(f"Missing values filled: {total_filled}"),
+                html.Ul([html.Li(d) for d in details])
             ], color="success", className="alert-custom")
-            
         except Exception as e:
             return dbc.Alert(f"Error in imputation: {str(e)}", color="danger", className="alert-custom")
     
     elif button_id == "clean-text-btn" and text_col:
         try:
-            cleaning_results = text_data_cleaning(df, [text_col])
-            
-            if text_col in cleaning_results['cleaned_columns']:
-                df[text_col] = cleaning_results['cleaned_columns'][text_col]
-                
-                # Update stored data
-                stored_data['current'] = df
-                
-                # Add to cleaning history
-                cleaning_history.append({
-                    'operation': 'Text Cleaning',
-                    'column': text_col,
-                    'details': f'Applied: {", ".join(text_options)}',
-                    'timestamp': datetime.datetime.now().strftime('%H:%M:%S')
-                })
-                
-                improvements = cleaning_results['quality_improvements'][text_col]
-                suggestions = cleaning_results['standardization_suggestions'].get(text_col, [])
-                
-                result_content = [
-                    html.H6([html.I(className="fas fa-check-circle me-2"), "Text Cleaning Completed"]),
-                    html.P(f"Column: {text_col}"),
-                    html.P(f"Unique values before: {improvements['unique_values_before']}"),
-                    html.P(f"Unique values after: {improvements['unique_values_after']}")
-                ]
-                
-                if suggestions:
-                    result_content.append(html.H6([html.I(className="fas fa-lightbulb me-2"), "Standardization Suggestions:"]))
-                    for group in suggestions[:3]:  # Show first 3 groups
-                        result_content.append(html.P(f"Similar values: {', '.join(group)}"))
-                
-                return dbc.Alert(result_content, color="success", className="alert-custom")
-            
+            # Support both single and multiple columns
+            if not isinstance(text_col, list):
+                text_col = [text_col]
+            cleaning_results = text_data_cleaning(df, text_col)
+            result_content = [
+                html.H6([html.I(className="fas fa-check-circle me-2"), "Text Cleaning Completed"]),
+                html.P(f"Columns: {', '.join(text_col)}"),
+                html.P(f"Applied options: {', '.join(text_options)}")
+            ]
+            for col in text_col:
+                if col in cleaning_results['cleaned_columns']:
+                    df[col] = cleaning_results['cleaned_columns'][col]
+                    cleaning_history.append({
+                        'operation': 'Text Cleaning',
+                        'column': col,
+                        'details': f'Applied: {', '.join(text_options)}',
+                        'timestamp': datetime.datetime.now().strftime('%H:%M:%S')
+                    })
+                    improvements = cleaning_results['quality_improvements'][col]
+                    suggestions = cleaning_results['standardization_suggestions'].get(col, [])
+                    result_content.append(html.Hr())
+                    result_content.append(html.P(f"Column: {col}"))
+                    result_content.append(html.P(f"Unique values before: {improvements['unique_values_before']}"))
+                    result_content.append(html.P(f"Unique values after: {improvements['unique_values_after']}"))
+                    if suggestions:
+                        result_content.append(html.H6([html.I(className="fas fa-lightbulb me-2"), f"Standardization Suggestions for {col}:"]))
+                        for group in suggestions[:3]:
+                            result_content.append(html.P(f"Similar values: {', '.join(group)}"))
+            stored_data['current'] = df
+            return dbc.Alert(result_content, color="success", className="alert-custom")
         except Exception as e:
             return dbc.Alert(f"Error in text cleaning: {str(e)}", color="danger", className="alert-custom")
     
@@ -2185,7 +2235,13 @@ def update_quality_dashboard(n_clicks, data):
             html.H6("Click 'Calculate Quality Score' to analyze data quality", className="text-muted")
         ], className="text-center py-4")
     
-    df = pd.DataFrame(data)
+    # Use the most recently cleaned/current data for quality score
+    global stored_data
+    df = None
+    if isinstance(stored_data, dict) and 'current' in stored_data and stored_data['current'] is not None:
+        df = stored_data['current']
+    else:
+        df = pd.DataFrame(data)
     quality_metrics = calculate_data_quality_score(df)
     
     # Overall score card
@@ -2200,25 +2256,25 @@ def update_quality_dashboard(n_clicks, data):
     metrics_row = dbc.Row([
         dbc.Col([
             html.Div([
-                html.Div(f"{quality_metrics['completeness']:.1f}%", className="quality-score", style={"color": "#06b6d4"}),
+                html.Div(f"{quality_metrics['completeness']:.1f}%", className="quality-score", style={"color": "#06b6d4", "display": "inline-block", "minWidth": "40px", "textAlign": "right"}),
                 html.Div("Completeness", className="quality-label")
             ], className="quality-card")
         ], width=3),
         dbc.Col([
             html.Div([
-                html.Div(f"{quality_metrics['validity']:.1f}%", className="quality-score", style={"color": "#3b82f6"}),
+                html.Div(f"{quality_metrics['validity']:.1f}%", className="quality-score", style={"color": "#3b82f6", "display": "inline-block", "minWidth": "40px", "textAlign": "right"}),
                 html.Div("Validity", className="quality-label")
             ], className="quality-card")
         ], width=3),
         dbc.Col([
             html.Div([
-                html.Div(f"{quality_metrics['consistency']:.1f}%", className="quality-score", style={"color": "#f59e0b"}),
+                html.Div(f"{quality_metrics['consistency']:.1f}%", className="quality-score", style={"color": "#f59e0b", "display": "inline-block", "minWidth": "40px", "textAlign": "right"}),
                 html.Div("Consistency", className="quality-label")
             ], className="quality-card")
         ], width=3),
         dbc.Col([
             html.Div([
-                html.Div(f"{quality_metrics['uniqueness']:.1f}%", className="quality-score", style={"color": "#10b981"}),
+                html.Div(f"{quality_metrics['uniqueness']:.1f}%", className="quality-score", style={"color": "#10b981", "display": "inline-block", "minWidth": "40px", "textAlign": "right"}),
                 html.Div("Uniqueness", className="quality-label")
             ], className="quality-card")
         ], width=3)
@@ -2415,8 +2471,8 @@ def apply_conditional_rule_callback(n_clicks, data, rule_text):
     try:
         df_modified = apply_conditional_rule(df, rule)
         
-        # Update stored data
-        stored_data['current'] = df_modified
+        
+        
         
         # Add to cleaning history
         cleaning_history.append({
