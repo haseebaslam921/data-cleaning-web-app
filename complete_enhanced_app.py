@@ -2202,7 +2202,7 @@ def ml_cleaning_operations(impute_clicks, text_clicks, data, impute_col, impute_
                     cleaning_history.append({
                         'operation': 'Text Cleaning',
                         'column': col,
-                        'details': f'Applied: {', '.join(text_options)}',
+                        'details': f'Applied: {', '.join(text_options)}",
                         'timestamp': datetime.datetime.now().strftime('%H:%M:%S')
                     })
                     improvements = cleaning_results['quality_improvements'][col]
