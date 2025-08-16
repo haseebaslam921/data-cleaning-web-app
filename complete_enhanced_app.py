@@ -1,3 +1,5 @@
+
+
 import dash
 from dash import dcc, html, Input, Output, State, dash_table, callback_context
 import pandas as pd
@@ -1325,6 +1327,87 @@ sidebar = html.Div([
     ], vertical=True, pills=True)
 ], className="sidebar")
 
+from dash.dependencies import ALL
+
+# --- Automatic Pattern Learning and Null Value Handling Block ---
+automatic_pattern_learning = html.Div([
+    html.H5([
+        html.I(className="fas fa-brain", style={'marginRight': '0.5rem', 'color': '#667eea'}),
+        "Automatic Pattern Learning"
+    ], style={'marginBottom': '1.5rem', 'color': '#2c3e50'}),
+    html.Div([
+        dcc.Checklist(
+            id='enable-pattern-learning',
+            options=[
+                {'label': [
+                    html.I(className="fas fa-robot", style={'marginRight': '0.5rem', 'color': '#17a2b8'}),
+                    html.Span("Enable Logical NULL Learning from Clean Sample")
+                ], 'value': 'enable'}
+            ],
+            value=[],
+            style={'marginBottom': '1rem'},
+            labelStyle={'display': 'flex', 'alignItems': 'center', 'padding': '0.5rem', 'backgroundColor': '#f8f9fa', 'borderRadius': '8px', 'border': '1px solid #e9ecef'}
+        ),
+        html.Label([
+            html.I(className="fas fa-sliders-h", style={'marginRight': '0.5rem', 'color': '#6f42c1'}),
+            "NULL Threshold (0-1):"
+        ], style={'fontWeight': 'bold', 'marginBottom': '0.5rem', 'display': 'flex', 'alignItems': 'center'}),
+        dcc.Input(
+            id='null-threshold',
+            type='number',
+            value=0.95,
+            min=0,
+            max=1,
+            step=0.01,
+            style={'width': '100%', 'padding': '0.75rem', 'marginBottom': '1rem', 'borderRadius': '8px', 'border': '2px solid #e9ecef'},
+            className='form-control'
+        ),
+        html.Label([
+            html.I(className="fas fa-sliders-h", style={'marginRight': '0.5rem', 'color': '#6f42c1'}),
+            "Minimum Support (0-1):"
+        ], style={'fontWeight': 'bold', 'marginBottom': '0.5rem', 'display': 'flex', 'alignItems': 'center'}),
+        dcc.Input(
+            id='min-support',
+            type='number',
+            value=0.1,
+            min=0,
+            max=1,
+            step=0.01,
+            style={'width': '100%', 'padding': '0.75rem', 'marginBottom': '1rem', 'borderRadius': '8px', 'border': '2px solid #e9ecef'},
+            className='form-control'
+        )
+    ])
+], style={'marginBottom': '2rem'})
+
+null_value_handling = html.Div([
+    html.H5([
+        html.I(className="fas fa-question-circle", style={'marginRight': '0.5rem', 'color': '#667eea'}),
+        "Null Value Handling"
+    ], style={'marginBottom': '1.5rem', 'color': '#2c3e50'}),
+    html.Div([
+        dcc.Dropdown(
+            id='null-method',
+            options=[
+                {'label': '🚫 No Action', 'value': 'none'},
+                {'label': '🗑️ Remove Rows with Nulls', 'value': 'remove_rows'},
+                {'label': '📊 Fill with Mean (Numerical)', 'value': 'fill_mean'},
+                {'label': '📈 Fill with Median (Numerical)', 'value': 'fill_median'},
+                {'label': '🎯 Fill with Mode', 'value': 'fill_mode'},
+                {'label': '📉 Interpolate (Numerical)', 'value': 'interpolate'},
+                {'label': '🤖 KNN Imputation', 'value': 'knn'}
+            ],
+            value='none',
+            style={'marginBottom': '1rem'},
+            className='enhanced-dropdown'
+        ),
+        html.Div([
+            html.Span("💡 ", style={'fontSize': '1.2rem'}),
+            html.Span("Choose how to handle missing values in your dataset. KNN imputation uses neighboring data points for more accurate predictions.", 
+                     style={'color': '#6c757d', 'fontSize': '0.9rem'})
+        ], style={'backgroundColor': '#f8f9fa', 'padding': '0.75rem', 'borderRadius': '8px', 'border': '1px solid #e9ecef'})
+    ])
+], style={'marginBottom': '2rem'})
+
 # Professional main content area
 content = html.Div([
     # Page Header
@@ -1527,6 +1610,9 @@ content = html.Div([
                 html.H4([html.I(className="fas fa-broom"), "Advanced Data Cleaning Operations"], className="section-title")
             ], className="section-header"),
             html.Div([
+                # --- Inserted Pattern Learning and Null Handling Block ---
+                automatic_pattern_learning,
+                null_value_handling,
                 dbc.Tabs([
                     dbc.Tab(label="🔧 Basic Operations", tab_id="basic-cleaning"),
                     dbc.Tab(label="📋 Conditional Rules", tab_id="conditional-cleaning"),
@@ -1598,12 +1684,40 @@ content = html.Div([
 
 # Main app layout with professional structure
 app.layout = html.Div([
+    dcc.Location(id="url", refresh=False),
     dcc.Store(id="stored-data"),
     dcc.Store(id="cleaning-operations"),
     dcc.Store(id="quality-metrics-store"),
     sidebar,
     content
 ], className="main-container")
+
+# --- Smooth scroll to section when sidebar link is clicked ---
+app.clientside_callback(
+    """
+    function(pathname) {
+        if (!pathname) return window.dash_clientside.no_update;
+        var hash = pathname.split('#')[1];
+        if (hash) {
+            var el = document.getElementById(hash);
+            if (el) {
+                el.scrollIntoView({behavior: 'smooth', block: 'start'});
+            }
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output('content-area-scroll-anchor', 'children'),
+    Input('url', 'href')
+)
+
+# Add a hidden anchor for scroll callback
+if not hasattr(app, '_content_area_scroll_anchor_added'):
+    content.children = [
+        html.Div(id='content-area-scroll-anchor', style={'display': 'none'}),
+        *content.children
+    ]
+    app._content_area_scroll_anchor_added = True
 
 # ==================== CALLBACKS ====================
 
@@ -2388,7 +2502,8 @@ def handle_export(download_clicks, report_clicks, data, export_format):
     return html.Div()
 
 if __name__ == '__main__':
-  import os
+ import os
 
-  port = int(os.environ.get("PORT", 8050))
-  app.run_server(debug=False, host="0.0.0.0", port=port)
+ port = int(os.environ.get("PORT", 8050))
+ app.run_server(debug=False, host="0.0.0.0", port=port)
+
